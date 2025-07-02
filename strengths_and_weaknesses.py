@@ -1,4 +1,18 @@
 import random
+x = float(input("Enter a number:"))
+if x > 1:
+    print("Probability cannot be greater than 1")
+    x = input("Enter a number:")
+
+y = float(input("Enter a number:"))
+if y > 1:
+    print("Probability cannot be greater than 1")
+    y = input("Enter a number:")
+
+z = float(input("Enter a number:"))
+if z > 1:
+    print("Probability cannot be greater than 1")
+    z = input("Enter a number:")
 
 categories = [
     "Mathematics",
@@ -18,8 +32,8 @@ weights = [
     0.01,  # Mathematics
     0.10,  # Science
     0.10,  # Trash
-    0.20,  # History
-    0.20,  # Social Sciences & Current Events
+    0.30,  # History
+    0.10,  # Social Sciences & Current Events
     0.15,  # Literature
     0.05,  # Fine Arts
     0.13,  # Geography
@@ -29,9 +43,9 @@ weights = [
 
 # Base strengths
 strengths = {
-    "PlayerA": 0.9,
-    "PlayerB": 0.6,
-    "PlayerC": 0.4
+    "PlayerA": x,
+    "PlayerB": y,
+    "PlayerC": z
 }
 
 # Category adjustments per player
