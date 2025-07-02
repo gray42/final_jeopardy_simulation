@@ -9,44 +9,36 @@
     # and their win probabilities
 
 import random
+from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 
 random.seed(42)  # For reproducibility
 
-def finalJeopardySim(starting_scores, probabilities, num_of_sims=50000, iterations=10):
+def finalJeopardySim(starting_scores, probabilities, num_of_sims=10000, iterations=10):
     num_of_players = len(starting_scores)
     # assign possible wagers with increments of ?
-    wager_increments = 50
-    
+    wager_increments = 1
     # initialize empty arrays for optimal wagers and probabilities for each player
     starting_wagers = [starting_scores[i] // 2 for i in range(num_of_players)]
     # a player's best win probability
     best_win_probs = [0.0] * num_of_players
     win_prob_history = [[] for _ in range(num_of_players)]
 
+    # track best results
+    best_total_win_prob = -1
+    best_wagers_overall = starting_wagers[:]
+    best_win_probs_overall = best_win_probs[:]
+    best_history_overall = None
+
     # loop through for iterations
-    for iteration in range(iterations):
+    for iteration in tqdm(range(iterations)):
         new_wagers = starting_wagers[:]
+        current_win_probs = [0.0] * num_of_players
         # for each player, find the best wager given the current wagers of the other players
         for i in range(num_of_players):
             # rebuild possible wagers for each player
             possible_wagers = [list(range(0, score + 1, wager_increments)) for score in starting_scores]
-
-            # add cover logic to possible wagers - cover next highest score - store opponents as tuple of (index, score)
-            opponents = [(j, starting_scores[j] + starting_wagers[j]) for j in range(num_of_players) if j != i]
-            # sort opponents by score so highest score comes first
-            opponents.sort(key=lambda x: x[1], reverse=True)
-            if opponents:
-                # get next highest score
-                next_player_score = opponents[0][1]
-                # cover bet = double opponent score + 1 minus current player's score
-                cover_wager = max(0, (next_player_score * 2 + 1) - starting_scores[i])
-                # add cover wager to player's possible wagers if it is valid
-                if 0 <= cover_wager <= starting_scores[i]:
-                    possible_wagers[i].append(cover_wager)
-                    possible_wagers[i].sort()
-
             player_best_wager = 0
             player_best_win_prob = 0.0
             win_probs_for_plot = []
@@ -63,7 +55,6 @@ def finalJeopardySim(starting_scores, probabilities, num_of_sims=50000, iteratio
                     for j in range(num_of_players):
                         correct = random.random() < probabilities[j]
                         # either add or subtract wager based on if correct
-                        # other player best-response wager
                         wager_j = wager if j == i else starting_wagers[j]
                         delta = wager_j if correct else -wager_j
                         # compute final score for given player and add to array
@@ -75,59 +66,45 @@ def finalJeopardySim(starting_scores, probabilities, num_of_sims=50000, iteratio
                 # decide best wager
                 win_prob = wins / num_of_sims
                 win_probs_for_plot.append(win_prob)
-
                 if win_prob > player_best_win_prob:
                     player_best_win_prob = win_prob
                     player_best_wager = wager
 
             # store best wager and win probability for player i
+            
             new_wagers[i] = player_best_wager
             best_win_probs[i] = player_best_win_prob
+            current_win_probs[i] = player_best_win_prob
             win_prob_history[i].append((possible_wagers[i], win_probs_for_plot))
-        
+
+        print(f"Iteration {iteration+1}: {new_wagers}")
+
+        # Track the best overall result
+        total_win_prob = sum(current_win_probs)
+        if total_win_prob > best_total_win_prob:
+            best_total_win_prob = total_win_prob
+            best_wagers_overall = new_wagers[:]
+            best_win_probs_overall = current_win_probs[:]
+            # Deep copy the history if you want to keep it
+            best_history_overall = [h[:] for h in win_prob_history]
+
+
         # update wagers after all players have chose best response (if same, then break)
         if new_wagers == starting_wagers:
-            break
-
+            print(f"Converged after {iteration+1} iterations.")
+            return new_wagers, best_win_probs, win_prob_history
         starting_wagers = new_wagers[:]
+    print("Warning: Did not converge. Returning best result found.")    
+    return best_wagers_overall, best_win_probs_overall, best_history_overall if best_history_overall else win_prob_history
 
-    return starting_wagers, best_win_probs, win_prob_history
-
+# INPUTS
 starting_scores = [1000, 800, 700]
-probabilities = [0.6, 1, 0.7]
+probabilities = [0.6, 0.9, 0.7]
 
 optimal_wagers, win_probs, history = finalJeopardySim(starting_scores, probabilities)
 
 for i, (wager, win_prob) in enumerate(zip(optimal_wagers, win_probs)):
     print(f"Player {i + 1}'s optimal wager: {wager} (Win probability: {win_prob * 100:.2f}%)")
-
-def test_optimality(player_idx, optimal_wagers, starting_scores, probabilities, num_of_sims=1000):
-    print(f"\nTesting optimality for Player {player_idx + 1}:")
-    other_wagers = optimal_wagers[:]
-    best_prob = 0
-    best_wager = 0
-    wager_increments = 1  # Use 1 for fine-grained test
-    for wager in range(0, starting_scores[player_idx] + 1, wager_increments):
-        test_wagers = other_wagers[:]
-        test_wagers[player_idx] = wager
-        wins = 0
-        for _ in range(num_of_sims):
-            final_scores = starting_scores[:]
-            for j in range(len(starting_scores)):
-                correct = random.random() < probabilities[j]
-                delta = test_wagers[j] if correct else -test_wagers[j]
-                final_scores[j] += delta
-            if final_scores[player_idx] == max(final_scores) and final_scores.count(final_scores[player_idx]) == 1:
-                wins += 1
-        win_prob = wins / num_of_sims
-        if win_prob > best_prob:
-            best_prob = win_prob
-            best_wager = wager
-        if wager == optimal_wagers[player_idx]:
-            print(f"  Wager {wager} with {best_wager}: {win_prob*100:.2f}% <-- simulation's optimal")
-        else:
-            print(f"  Wager {wager}: {win_prob*100:.2f}%")
-    print(f"Best wager for Player {player_idx + 1} by exhaustive search: {best_wager} (Win probability: {best_prob*100:.2f}%)")
 
 def plot_win_probs(history):
     for i, player_data in enumerate(history):
@@ -149,6 +126,6 @@ def print_optimal_table(optimal_wagers, win_probs):
         'Win Probability': [f"{p * 100:.2f}%" for p in win_probs]
     })
     print(df)
-test_optimality(0, optimal_wagers, starting_scores, probabilities)
+
 print_optimal_table(optimal_wagers, win_probs)
 plot_win_probs(history)
