@@ -1,0 +1,82 @@
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+import time
+
+BASE_URL = "https://j-archive.com"
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; fj-scraper/1.0)"}
+DELAY = 0.5  # seconds between requests to be polite
+
+def get_season_urls():
+    """Return full URLs for each season’s page (showseason.php?season=X)."""
+    resp = requests.get(f"{BASE_URL}/listseasons.php", headers=HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    urls = []
+    for a in soup.find_all("a", href=re.compile(r"showseason\.php\?season=\d+")):
+        urls.append(BASE_URL + "/" + a["href"])
+    return urls
+
+def get_game_ids(season_url):
+    """Given a season URL, scrape all game_id’s from its page."""
+    resp = requests.get(season_url, headers=HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    ids = set()
+    for a in soup.find_all("a", href=re.compile(r"showgame\.php\?game_id=(\d+)")):
+        m = re.search(r"game_id=(\d+)", a["href"])
+        if m:
+            ids.add(int(m.group(1)))
+    return sorted(ids)
+
+def parse_final_jeopardy(soup, game_id):
+    """Extract the Final Jeopardy! clue (category, question, answer)."""
+    fj = soup.select_one("#final_jeopardy_round")
+    if not fj:
+        return None
+
+    category = fj.select_one(".category_name").get_text(strip=True)
+    question = fj.select_one(".clue_text").get_text(" ", strip=True)
+    # answer is hidden in the onmouseover JS
+    m = re.search(r"correct_response',\s*'(.*?)'", str(fj))
+    answer = m.group(1).encode('utf-8').decode('unicode_escape') if m else ""
+
+    return {
+        "game_id": game_id,
+        "category": category,
+        "question": question,
+        "answer": answer
+    }
+
+def scrape_all_final_jeopardy(output_file="final_jeopardy_all.json"):
+    all_fj = []
+    season_urls = get_season_urls()
+    print(f"Found {len(season_urls)} seasons.")
+
+    for season_url in season_urls:
+        print(f"→ Scraping season page: {season_url}")
+        game_ids = get_game_ids(season_url)
+        print(f"   → {len(game_ids)} games found")
+
+        for gid in game_ids:
+            game_url = f"{BASE_URL}/showgame.php?game_id={gid}"
+            resp = requests.get(game_url, headers=HEADERS)
+            if resp.status_code != 200:
+                print(f"     • Skipping game {gid} (status {resp.status_code})")
+                continue
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            fj = parse_final_jeopardy(soup, gid)
+            if fj:
+                all_fj.append(fj)
+
+            time.sleep(DELAY)
+
+    print(f"Total Final Jeopardy! clues collected: {len(all_fj)}")
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(all_fj, f, ensure_ascii=False, indent=2)
+    print(f"Wrote data to {output_file}")
+
+if __name__ == "__main__":
+    scrape_all_final_jeopardy()

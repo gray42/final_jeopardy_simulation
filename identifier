@@ -1,0 +1,116 @@
+# fast_fj_pipeline.py
+
+import requests, re, json
+from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random, numpy as np
+
+# for ML:
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+
+BASE_URL = "https://j-archive.com"
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; fj-scraper/1.0)"}
+MAX_WORKERS = 20
+
+def get_season_urls():
+    """Grab every season page URL from the master list."""
+    resp = requests.get(f"{BASE_URL}/listseasons.php", headers=HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    # find all <a href="showseason.php?season=X">
+    return [
+        f"{BASE_URL}/{a['href']}"
+        for a in soup.find_all("a", href=re.compile(r"showseason\.php\?season=\d+"))
+    ]
+
+def get_game_ids(season_url):
+    """Parse a season page and return all game_id ints."""
+    resp = requests.get(season_url, headers=HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    ids = {
+        int(m.group(1))
+        for a in soup.find_all("a", href=re.compile(r"showgame\.php\?game_id=(\d+)"))
+        for m in [re.search(r"game_id=(\d+)", a["href"])]
+    }
+    return sorted(ids)
+
+def parse_final(soup, gid):
+    """Extract the Final Jeopardy! clue block, or return None."""
+    fj = soup.select_one("#final_jeopardy_round")
+    if not fj:
+        return None
+
+    cat = fj.select_one(".category_name").get_text(strip=True)
+    clue = fj.select_one(".clue_text").get_text(" ", strip=True)
+    m = re.search(r"correct_response',\s*'(.*?)'", str(fj))
+    ans = m.group(1).encode('utf-8').decode('unicode_escape') if m else ""
+    return {"game_id": gid, "category": cat, "clue": clue, "answer": ans}
+
+def scrape_final_for(gid):
+    """Fetch one game page and return its Final Jeopardy dict (or None)."""
+    url = f"{BASE_URL}/showgame.php?game_id={gid}"
+    r = requests.get(url, headers=HEADERS)
+    r.raise_for_status()
+    return parse_final(BeautifulSoup(r.text, "html.parser"), gid)
+
+def build_dataset():
+    # 1) gather every game ID
+    season_urls = get_season_urls()
+    all_ids = set()
+    for url in season_urls:
+        all_ids.update(get_game_ids(url))
+    game_ids = sorted(all_ids)
+    print(f"Found {len(game_ids)} total games.")
+
+    # 2) fetch them in parallel
+    finals = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as exe:
+        future_to_id = {exe.submit(scrape_final_for, gid): gid for gid in game_ids}
+        for future in as_completed(future_to_id):
+            gid = future_to_id[future]
+            try:
+                item = future.result()
+                if item:
+                    finals.append(item)
+            except Exception as e:
+                # you can log failures here
+                pass
+
+    print(f"Scraped {len(finals)} Final Jeopardy! clues.")
+    with open("final_jeopardy.json", "w", encoding="utf-8") as f:
+        json.dump(finals, f, ensure_ascii=False, indent=2)
+
+def train_and_run_cli():
+    # Load
+    data = json.load(open("final_jeopardy.json", encoding="utf-8"))
+    X = [d["clue"] for d in data]
+    y = [d["category"] for d in data]
+
+    # Train
+    model = make_pipeline(
+        TfidfVectorizer(min_df=2, stop_words="english"),
+        LogisticRegression(max_iter=2000)
+    )
+    model.fit(X, y)
+
+    # CLI loop
+    print("=== Final Jeopardy! Category Guesser ===")
+    print("Press Enter for a new clue (Ctrl-C to quit).")
+    while True:
+        input()
+        idx = random.randrange(len(X))
+        q, true_cat = X[idx], y[idx]
+        pred = model.predict([q])[0]
+        conf = np.max(model.predict_proba([q])) 
+        print(f"\n❓ “{q}”")
+        print(f"   • Actual:    {true_cat}")
+        print(f"   • Predicted: {pred} (confidence {conf:.1%})\n")
+
+if __name__ == "__main__":
+    # 1) Build or refresh your dataset
+    build_dataset()
+    # 2) Then train & drop into the on-demand CLI
+    train_and_run_cli()
