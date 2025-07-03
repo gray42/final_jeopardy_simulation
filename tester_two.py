@@ -12,120 +12,232 @@ import random
 from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 random.seed(42)  # For reproducibility
 
-def finalJeopardySim(starting_scores, probabilities, num_of_sims=10000, iterations=10):
+def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_sims=10000, iterations=20, ):
     num_of_players = len(starting_scores)
-    # assign possible wagers with increments of ?
-    wager_increments = 1
-    # initialize empty arrays for optimal wagers and probabilities for each player
-    starting_wagers = [starting_scores[i] // 2 for i in range(num_of_players)]
+     # Wager increments in dollars
+
+    # starting wagers
+    def get_starting_wagers(score, position):
+        # if you are leader
+        if position == 0:
+            # bet enough to cover the second place player doubling up
+            return min(score, max(0, 2 * max(starting_scores[1:]) - score))
+        # else if you are trailing
+        else:
+            leader_score = max(starting_scores)
+            # when trailing, wager enough to to catch up to leader if they answer wrong
+            return min(score, max(0, 2 * leader_score - score))
+
+    # initialize starting wagers
+    starting_wagers = []
+    for i, score in enumerate(starting_scores):
+        # sort players by score so that the highest score is first
+        # range(len(starting_scores)) gives indices of players, while lambda function sorts in reverse order
+        position = sorted(range(len(starting_scores)), key=lambda x: starting_scores[x], reverse=True).index(i)
+        # get starting wager and append to list
+        starting_wager = get_starting_wagers(score, position)
+        starting_wagers.append(starting_wager)
+
     # a player's best win probability
     best_win_probs = [0.0] * num_of_players
-    win_prob_history = [[] for _ in range(num_of_players)]
 
-    # track best results
-    best_total_win_prob = -1
-    best_wagers_overall = starting_wagers[:]
-    best_win_probs_overall = best_win_probs[:]
-    best_history_overall = None
+    # track wager history for iterations
+    convergence_history = []
+    # Factor to prevent oscillation in wagers
+    dampening_factor = 0.7  
+
+    print(f"Initial wagers: {starting_wagers}")
 
     # loop through for iterations
     for iteration in tqdm(range(iterations)):
+        # initialize old, new wagers and win probabilities
+        old_wagers = starting_wagers[:]
         new_wagers = starting_wagers[:]
-        current_win_probs = [0.0] * num_of_players
-        # for each player, find the best wager given the current wagers of the other players
+        iteration_win_probs = []
+
+        # simulate each player
         for i in range(num_of_players):
             # rebuild possible wagers for each player
-            possible_wagers = [list(range(0, score + 1, wager_increments)) for score in starting_scores]
-            player_best_wager = 0
-            player_best_win_prob = 0.0
-            win_probs_for_plot = []
+            player_score = starting_scores[i]
+
+            strategic_wager = get_strategic_wagers(
+                player_score, starting_scores, starting_wagers, i, increment=wager_increments)
+
+            # initialize best wager and win probability for player i
+            best_wager = starting_wagers[i]
+            best_win_prob = 0.0
 
             # test possible wagers for player i
-            for wager in possible_wagers[i]:
+            for wager in strategic_wager:
                 wins = 0
-                # test num_of_sims times
-                for _ in range(num_of_sims):
-                    # copy starting_scores array to final_scores
-                    final_scores = starting_scores[:]
+                ties = 0
 
+                #  calculate final scores for every player
+                for _ in range(num_of_sims):
+                    final_scores = []
                     # determine win probs for each player
                     for j in range(num_of_players):
                         correct = random.random() < probabilities[j]
-                        # either add or subtract wager based on if correct
-                        wager_j = wager if j == i else starting_wagers[j]
-                        delta = wager_j if correct else -wager_j
-                        # compute final score for given player and add to array
-                        final_scores[j] += delta
-                    # does player i win? yes if he has the max score and it is unique
-                    if final_scores[i] == max(final_scores) and final_scores.count(final_scores[i]) == 1:
-                        wins += 1
+                        player_wager = wager if j == i else starting_wagers[j]
+                        if correct:
+                            final_scores.append(starting_scores[j] + player_wager)
+                        else:
+                            final_scores.append(starting_scores[j] - player_wager)
+                    
+                    max_score = max(final_scores)   
+                    # get index of winner(s)
+                    winners = [i for i, score in enumerate(final_scores) if score == max_score]
+                    # solo winner
+                    if len(winners) == 1:
+                        if winners[0] == i:
+                            wins += 1
+                    else:
+                        # TIE BREAK - player with highest starting score wins
+                        tie_winner = max(winners, key=lambda x: starting_scores[x])
+                        # increment player i's wins if they win tie break
+                        if tie_winner == i:
+                            wins += 1
+                        ties += 1
 
-                # decide best wager
+                # calculate win probability for this wager
                 win_prob = wins / num_of_sims
-                win_probs_for_plot.append(win_prob)
-                if win_prob > player_best_win_prob:
-                    player_best_win_prob = win_prob
-                    player_best_wager = wager
+                # if this wager gives a better win probability, update best wager and win prob
+                if win_prob > best_win_prob:
+                    best_win_prob = win_prob
+                    best_wager = wager
 
-            # store best wager and win probability for player i
+            # Apply dampening to prevent oscillation
+            if iteration > 0:
+                # calculate a weighted average of best wager and previous wager using dampening factor
+                new_wagers[i] = int(dampening_factor * best_wager + (1 - dampening_factor) * starting_wagers[i])
+            else:
+                # first time use best wager
+                new_wagers[i] = best_wager
+            # append player's best win prob for iteration
+            iteration_win_probs.append(best_win_prob)
+        # update starting wagers/win probs with wagers/win probs found from this iteration
+        starting_wagers = new_wagers
+        best_win_probs = iteration_win_probs
+        # record wager history for convergence analysis
+        convergence_history.append(starting_wagers[:])
+        
+        # Print current iteration results
+        print(f"Iteration {iteration+1}: Wagers = {starting_wagers}, Win Probs = {[f'{p:.3f}' for p in best_win_probs]}")
+        
+        # Check for convergence (less strict to allow for minor fluctuations)
+        if iteration > 0:
+            # calculate change for new vs old wagers
+            wager_changes = [abs(new_wagers[i] - old_wagers[i]) for i in range(num_of_players)]
+            # check if all of the changes are within the wager increment - then wager has converged
+            if all(change <= wager_increments for change in wager_changes):
+                print(f"Converged after {iteration+1} iterations.")
+                break
+
+    return starting_wagers, best_win_probs, convergence_history
+
+def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment=50):
+    wagers = set()
+    wagers.add(0)
+    wagers.add(player_score)
+
+    # get starting wager and then calculate nearby wagers
+    current = starting_wagers[i]
+    for x in [-2*increment, -increment, 0, increment, 2*increment]:
+       wager = max(0, min(player_score, current + x))
+       wagers.add(wager)
+
+    # loop through opponents' scores and wagers to come up with strategic wagers
+    for j, (score, wager) in enumerate(zip(all_scores, starting_wagers)):
+        # skip current player
+        if j == i:
+            continue
             
-            new_wagers[i] = player_best_wager
-            best_win_probs[i] = player_best_win_prob
-            current_win_probs[i] = player_best_win_prob
-            win_prob_history[i].append((possible_wagers[i], win_probs_for_plot))
-
-        print(f"Iteration {iteration+1}: {new_wagers}")
-
-        # Track the best overall result
-        total_win_prob = sum(current_win_probs)
-        if total_win_prob > best_total_win_prob:
-            best_total_win_prob = total_win_prob
-            best_wagers_overall = new_wagers[:]
-            best_win_probs_overall = current_win_probs[:]
-            # Deep copy the history if you want to keep it
-            best_history_overall = [h[:] for h in win_prob_history]
-
-
-        # update wagers after all players have chose best response (if same, then break)
-        if new_wagers == starting_wagers:
-            print(f"Converged after {iteration+1} iterations.")
-            return new_wagers, best_win_probs, win_prob_history
-        starting_wagers = new_wagers[:]
-    print("Warning: Did not converge. Returning best result found.")    
-    return best_wagers_overall, best_win_probs_overall, best_history_overall if best_history_overall else win_prob_history
-
-# INPUTS
-starting_scores = [1000, 800, 700]
-probabilities = [0.6, 0.9, 0.7]
-
-optimal_wagers, win_probs, history = finalJeopardySim(starting_scores, probabilities)
-
-for i, (wager, win_prob) in enumerate(zip(optimal_wagers, win_probs)):
-    print(f"Player {i + 1}'s optimal wager: {wager} (Win probability: {win_prob * 100:.2f}%)")
-
-def plot_win_probs(history):
-    for i, player_data in enumerate(history):
-        last_iter = player_data[-1]  # Only plot last iteration
-        x_vals, y_vals = last_iter
-        plt.plot(x_vals, y_vals, label=f'Player {i + 1}')
+        # minimum amount to wager to beat opponent's score given they answer correctly
+        target_to_beat_correct = score + wager - player_score
+        if 0 <= target_to_beat_correct <= player_score:
+            # wager = just enough
+            wagers.add(target_to_beat_correct)
+            # wager = just enough + padding
+            wagers.add(min(player_score, target_to_beat_correct + increment))
+        
+         # minimum amount to wager to beat opponent's score given they answer incorrectly 
+        target_to_beat_wrong = score - wager - player_score
+        if 0 <= target_to_beat_wrong <= player_score:
+            wagers.add(target_to_beat_wrong)
+            wagers.add(min(player_score, target_to_beat_wrong + increment))
+        
+        # "Forrest Bounce" - wager to tie if both wrong
+        tie_wager = player_score - score + wager
+        if 0 <= tie_wager <= player_score:
+            wagers.add(tie_wager)
     
-    plt.xlabel("Wager Amount")
-    plt.ylabel("Win Probability")
-    plt.title("Final Jeopardy: Win Probabilities vs. Wager Amounts")
+    # add regular wagers in increments to list
+    regular_wagers = list(range(0, player_score + 1, increment))
+    wagers.update(regular_wagers)
+    
+    return sorted(list(wagers))
+
+if __name__ == "__main__":
+    # TEST CASE 1
+    print("\n===================== Test Case 1 =====================")
+    starting_scores = [1000, 800, 700]
+    probabilities = [0.65, 0.70, 0.60] 
+
+    optimal_wagers, win_probs, history = finalJeopardySim(
+        starting_scores, probabilities, 
+        num_of_sims=20000,  
+        iterations=15,
+        wager_increments=100
+    )
+
+    # Display results
+    print("\n=== FINAL RESULTS ===")
+    df = pd.DataFrame({
+        'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
+        'Starting Score': [f'${score:,}' for score in starting_scores],
+        'Probability Correct': [f'{p:.1%}' for p in probabilities],
+        'Optimal Wager': [f'${wager:,}' for wager in optimal_wagers],
+        'Win Probability': [f'{p:.1%}' for p in win_probs]
+    })
+    print(df.to_string(index=False))
+
+
+# LOOK INTO VISUALS MORE 
+
+def plot_convergence(history, starting_scores):
+    history = np.array(history)
+    for i in range(history.shape[1]):
+        plt.plot(history[:, i], label=f'Player {i+1} (Start: ${starting_scores[i]})')
+    plt.xlabel("Iteration")
+    plt.ylabel("Wager Amount")
+    plt.title("Convergence of Wagers Over Iterations")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-def print_optimal_table(optimal_wagers, win_probs):
-    df = pd.DataFrame({
-        'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
-        'Optimal Wager': optimal_wagers,
-        'Win Probability': [f"{p * 100:.2f}%" for p in win_probs]
-    })
-    print(df)
+def plot_final_results(optimal_wagers, win_probs, starting_scores):
+    players = [f'Player {i+1}' for i in range(len(optimal_wagers))]
+    fig, ax1 = plt.subplots()
 
-print_optimal_table(optimal_wagers, win_probs)
-plot_win_probs(history)
+    color = 'tab:blue'
+    ax1.set_xlabel('Player')
+    ax1.set_ylabel('Optimal Wager', color=color)
+    ax1.bar(players, optimal_wagers, color=color, alpha=0.6)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()
+    color = 'tab:red'
+    ax2.set_ylabel('Win Probability', color=color)
+    ax2.plot(players, [p*100 for p in win_probs], color=color, marker='o')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title('Optimal Wagers and Win Probabilities')
+    plt.show()
+
+# Usage:
+plot_final_results(optimal_wagers, win_probs, starting_scores)
+plot_convergence(history, starting_scores)
