@@ -1,3 +1,5 @@
 import strengths_and_weaknesses
-for x in range(1):
+import identifier
+
+for x in range(10):
     strengths_and_weaknesses

@@ -101,7 +101,7 @@ def main():
             print("\n❓ Clue:             ", q)
             print("💡 Answer:          ", a)
             print("🏷 Jeopardy! Category:", orig)
-            print("🔍 Predicted Bucket: ", pred, "\n")
+            return("🔍 Predicted Bucket: ", pred, "\n")
     except KeyboardInterrupt:
         print("\nGoodbye!")
 
