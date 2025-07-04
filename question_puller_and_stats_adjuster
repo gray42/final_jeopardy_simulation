@@ -1,0 +1,3 @@
+import strengths_and_weaknesses
+for x in range(1):
+    strengths_and_weaknesses
