@@ -60,6 +60,9 @@ def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_si
         new_wagers = starting_wagers[:]
         iteration_win_probs = []
 
+        heatmap = [[] for _ in range(num_of_players)]
+        wager_range = [[] for _ in range(num_of_players)]
+
         # simulate each player
         for i in range(num_of_players):
             # rebuild possible wagers for each player
@@ -71,6 +74,8 @@ def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_si
             # initialize best wager and win probability for player i
             best_wager = starting_wagers[i]
             best_win_prob = 0.0
+
+            player_wager_win_probs = []
 
             # test possible wagers for player i
             for wager in strategic_wager:
@@ -104,11 +109,16 @@ def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_si
 
                 # calculate win probability for this wager
                 win_prob = wins / num_of_sims
+                player_wager_win_probs.append((wager, win_prob))
                 # if this wager gives a better win probability, update best wager and win prob
                 if win_prob > best_win_prob:
                     best_win_prob = win_prob
                     best_wager = wager
-
+            # update wagers and win probabilities for heatmap of player i
+            wagers, win_probs_for_player = zip(*player_wager_win_probs)
+            wager_range[i] = list(wagers)
+            heatmap[i] = list(win_probs_for_player)
+            
             # Apply dampening to prevent oscillation
             if iteration > 0:
                 # calculate a weighted average of best wager and previous wager using dampening factor
@@ -136,7 +146,7 @@ def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_si
                 print(f"Converged after {iteration+1} iterations.")
                 break
 
-    return starting_wagers, best_win_probs, convergence_history
+    return starting_wagers, best_win_probs, convergence_history, wager_range, heatmap
 
 def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment=50):
     wagers = set()
@@ -186,17 +196,42 @@ def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment
 def plot_convergence(history, starting_scores):
     history = np.array(history)
     x = np.arange(history.shape[0])
+    plt.figure(figsize=(12, 6))
+    # plot each player's wager history
     for i in range(history.shape[1]):
-        plt.plot(x, history[:, i], label=f'Player {i+1} (Start: ${starting_scores[i]})')
-        coeffs = np.polyfit(x, history[:, i], 1)
-        trend = np.polyval(coeffs, x)
-        plt.plot(x, trend, linestyle='--', color='red', alpha=0.5, label=f"Player {i+1} Trend")
+        plt.plot(x, history[:, i], label=f"Player {i+1} (Start: ${starting_scores[i]})")
     plt.xlabel("Iteration")
     plt.ylabel("Wager Amount")
     plt.title("Convergence of Wagers Over Iterations")
     plt.legend()
     plt.grid(True)
+    plt.tight_layout()
     plt.show()
+
+def plot_heatmap(player_index, wager_range, win_probs):
+    plt.figure(figsize=(8, 5))
+    plt.scatter(wager_range, win_probs, c=win_probs, cmap='viridis', s=100, edgecolor='k')
+    plt.colorbar(label="Win Probability")
+    plt.xlabel("Wager")
+    plt.ylabel("Win Probability")
+    plt.title(f"Player {player_index+1}: Win Probability vs Wager")
+    plt.grid(True)
+    plt.show()
+
+def plot_final_win_probs(win_probs, wager):
+    plt.figure(figsize=(8, 5))
+    players = [f'Player {i+1}' for i in range(len(win_probs))]
+    plt.bar(players, win_probs, color='skyblue')
+    plt.ylim(0, 1)
+    plt.ylabel("Win Probability")
+    plt.title("Final Win Probabilities")
+    for i, prob in enumerate(win_probs):
+        plt.text(i, prob + 0.02, f"{prob:.2%}", ha='center')
+        plt.text(i, 0.01, f"Wager: ${wager[i]}", ha='center', fontsize=9, color='darkgreen')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+
+
 
 if __name__ == "__main__":
     # TEST CASE 1
@@ -204,7 +239,7 @@ if __name__ == "__main__":
     starting_scores = [1000, 800, 700]
     probabilities = [0.65, 0.70, 0.60] 
 
-    optimal_wagers, win_probs, history = finalJeopardySim(
+    optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
@@ -221,6 +256,11 @@ if __name__ == "__main__":
         'Win Probability': [f'{p:.1%}' for p in win_probs]
     })
     print(df.to_string(index=False))
+
+    # call visuals
+    plot_final_win_probs(win_probs, optimal_wagers)
+    for i in range(len(starting_scores)):
+        plot_heatmap(i, wager_range[i], heatmap[i])
     plot_convergence(history, starting_scores)
 
     # TEST CASE 2
@@ -228,7 +268,7 @@ if __name__ == "__main__":
     starting_scores = [1200, 1300, 650]
     probabilities = [0.75, 0.50, 0.90] 
 
-    optimal_wagers, win_probs, history = finalJeopardySim(
+    optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
@@ -252,7 +292,7 @@ if __name__ == "__main__":
     starting_scores = [1300, 600, 500]
     probabilities = [0.75, 0.50, 0.90] 
 
-    optimal_wagers, win_probs, history = finalJeopardySim(
+    optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
@@ -276,7 +316,7 @@ if __name__ == "__main__":
     starting_scores = [1200, 600, 500]
     probabilities = [0.75, 0.50, 0.90] 
 
-    optimal_wagers, win_probs, history = finalJeopardySim(
+    optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
@@ -300,7 +340,7 @@ if __name__ == "__main__":
     starting_scores = [1600, 1300, 900]
     probabilities = [0.75, 0.60, 0.90] 
 
-    optimal_wagers, win_probs, history = finalJeopardySim(
+    optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
