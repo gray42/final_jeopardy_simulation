@@ -1,82 +1,92 @@
-import requests
-from bs4 import BeautifulSoup
+#!/usr/bin/env python3
 import json
+import random
 import re
-import time
+import sys
+from difflib import SequenceMatcher
 
-BASE_URL = "https://j-archive.com"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; fj-scraper/1.0)"}
-DELAY = 0.5  # seconds between requests to be polite
+# —— your ten target buckets —— 
+BUCKETS = [
+    "Mathematics",
+    "Science",
+    "Trash",
+    "History",
+    "Social Sciences & Current Events",
+    "Literature",
+    "Fine Arts",
+    "Geography",
+    "Religion",
+    "Mythology"
+]
 
-def get_season_urls():
-    """Return full URLs for each season’s page (showseason.php?season=X)."""
-    resp = requests.get(f"{BASE_URL}/listseasons.php", headers=HEADERS)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    urls = []
-    for a in soup.find_all("a", href=re.compile(r"showseason\.php\?season=\d+")):
-        urls.append(BASE_URL + "/" + a["href"])
-    return urls
+def load_keywords(path="keywords.json"):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: cannot find '{path}'.", file=sys.stderr)
+        sys.exit(1)
+    # Validate
+    for b in BUCKETS:
+        if b not in data or len(data[b]) < 250:
+            print(f"Error: bucket '{b}' missing or has fewer than 250 keywords.", file=sys.stderr)
+            sys.exit(1)
+    return data
 
-def get_game_ids(season_url):
-    """Given a season URL, scrape all game_id’s from its page."""
-    resp = requests.get(season_url, headers=HEADERS)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    ids = set()
-    for a in soup.find_all("a", href=re.compile(r"showgame\.php\?game_id=(\d+)")):
-        m = re.search(r"game_id=(\d+)", a["href"])
-        if m:
-            ids.add(int(m.group(1)))
-    return sorted(ids)
+def load_bank(path="final_jeopardy_all.json"):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: cannot find '{path}'.", file=sys.stderr)
+        sys.exit(1)
 
-def parse_final_jeopardy(soup, game_id):
-    """Extract the Final Jeopardy! clue (category, question, answer)."""
-    fj = soup.select_one("#final_jeopardy_round")
-    if not fj:
-        return None
+def pick_random(bank):
+    return random.choice(bank)
 
-    category = fj.select_one(".category_name").get_text(strip=True)
-    question = fj.select_one(".clue_text").get_text(" ", strip=True)
-    # answer is hidden in the onmouseover JS
-    m = re.search(r"correct_response',\s*'(.*?)'", str(fj))
-    answer = m.group(1).encode('utf-8').decode('unicode_escape') if m else ""
+def classify(orig_cat, clue, answer, KEYWORDS):
+    txt = (clue + " " + answer).lower()
+    best_bucket, best_score = None, -1.0
 
-    return {
-        "game_id": game_id,
-        "category": category,
-        "question": question,
-        "answer": answer
-    }
+    for bucket in BUCKETS:
+        # 1) similarity boost
+        sim = SequenceMatcher(None, orig_cat.lower(), bucket.lower()).ratio()
+        score = sim * 2.0
 
-def scrape_all_final_jeopardy(output_file="final_jeopardy_all.json"):
-    all_fj = []
-    season_urls = get_season_urls()
-    print(f"Found {len(season_urls)} seasons.")
+        # 2) keyword hits
+        for kw in KEYWORDS[bucket]:
+            score += len(re.findall(rf"\b{re.escape(kw.lower())}\b", txt))
 
-    for season_url in season_urls:
-        print(f"→ Scraping season page: {season_url}")
-        game_ids = get_game_ids(season_url)
-        print(f"   → {len(game_ids)} games found")
+        if score > best_score:
+            best_score, best_bucket = score, bucket
 
-        for gid in game_ids:
-            game_url = f"{BASE_URL}/showgame.php?game_id={gid}"
-            resp = requests.get(game_url, headers=HEADERS)
-            if resp.status_code != 200:
-                print(f"     • Skipping game {gid} (status {resp.status_code})")
-                continue
+    # fallback
+    if best_score <= 0:
+        return "Trash"
+    return best_bucket
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-            fj = parse_final_jeopardy(soup, gid)
-            if fj:
-                all_fj.append(fj)
+def main():
+    KEYWORDS = load_keywords()
+    bank     = load_bank()
 
-            time.sleep(DELAY)
+    print("=== Final Jeopardy! Random Clue + Static Keyword Classifier ===")
+    print("Press Enter to draw a clue (Ctrl-C to exit).")
 
-    print(f"Total Final Jeopardy! clues collected: {len(all_fj)}")
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(all_fj, f, ensure_ascii=False, indent=2)
-    print(f"Wrote data to {output_file}")
+    try:
+        while True:
+            input()
+            rec  = pick_random(bank)
+            q    = rec.get("question","")
+            a    = rec.get("answer","")
+            orig = rec.get("category","")
+            pred = classify(orig, q, a, KEYWORDS)
+
+            print("\n❓ Clue:   ", q)
+            print("💡 Answer:", a)
+            print("🏷 Original category:", orig)
+            print("🔍 Predicted bucket:  ", pred, "\n")
+    except KeyboardInterrupt:
+        print("\nGoodbye!")
 
 if __name__ == "__main__":
-    scrape_all_final_jeopardy()
+    main()
