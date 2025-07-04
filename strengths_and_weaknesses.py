@@ -15,21 +15,21 @@ def read_prob(name):
         print("  ❗ Please enter a number between 0 and 1.")
 
 # Get strengths
-PlayerA = read_prob("PlayerA")
-PlayerB = read_prob("PlayerB")
-PlayerC = read_prob("PlayerC")
+Player1 = read_prob("Player 1")
+Player2 = read_prob("Player 2")
+Player3 = read_prob("Player 3")
 
 strengths = {
-    "PlayerA": PlayerA,
-    "PlayerB": PlayerB,
-    "PlayerC": PlayerC
+    "Player1": Player1,
+    "Player2": Player2,
+    "Player3": Player3,
 }
 
 # Category adjustments per player
 adjustments = {
-    "PlayerA": {"Fine Arts": +0.1, "Literature": -0.5},
-    "PlayerB": {"Science": +0.2,      "Religion":   -0.3},
-    "PlayerC": {"Mythology": +0.15,   "History":    -0.2}
+    "Player1": {"Fine Arts": +0.1, "Literature": -0.5},
+    "Player2": {"Science": +0.2,      "Religion":   -0.3},
+    "Player3": {"Mythology": +0.15,   "History":    -0.2}
 }
 
 def adjust_strength(player_name: str, category: str, base_strength: float) -> float:
@@ -48,6 +48,17 @@ a   = rec.get("answer", "")
 orig= rec.get("category", "")
 
 choice = identifier.classify(orig, q, a, KEYWORDS)
+
+def get_probabilities():
+    adjusted = []
+    for player, base in strengths.items():
+        new_str = adjust_strength(player, choice, base)
+        if new_str == 0.0:
+            new_str += 0.1
+        elif new_str > 1.0:
+            new_str = 0.99
+        adjusted.append(round(max(0.0, min(1.0, new_str)), 2))
+    return adjusted
 
 # — Display the selected clue and the computed category —
 print("\n=== SELECTED FINAL JEOPARDY! CLUE ===")

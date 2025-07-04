@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from strengths_and_weaknesses import get_probabilities
 
 random.seed(42)  # For reproducibility
 
@@ -237,7 +238,9 @@ if __name__ == "__main__":
     # TEST CASE 1
     print("\n===================== TEST CASE 1 =====================")
     starting_scores = [1000, 800, 700]
-    probabilities = [0.65, 0.70, 0.60] 
+    #probabilities = [0.65, 0.70, 0.60] 
+    probabilities = get_probabilities()  
+    print(f"Probabilities: {probabilities}")
 
     optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 

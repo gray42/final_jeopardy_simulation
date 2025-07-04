@@ -1,4 +1,4 @@
-""" Number of participants in FJ = 3
+""" """ """ Number of participants in FJ = 3
 Each player comes into FJ with a starting amount X
 Giving them a minimum wager of $0 and a max wager of $(x * 2)
 Peg the probability of all three contestants at the same likelihood
@@ -9,7 +9,7 @@ Record correct or incorrect answers
 Wager amount
 Winner - any lead changes
 Count how often player Y in A, B, C wins and with what wager
-"""
+""" """
 
 # imports
 
@@ -74,4 +74,4 @@ for _ in range(num_of_sims):
 for i in range(3):
     win_prob = round(wins[i] / num_of_sims, 2) * 100
     player_num = i + 1
-    print("Player " + str(player_num) +  " won Final Jeopardy " + str(win_prob) + "% " + "of the time with a wager of $" + str(wager_scores[i])) 
+    print("Player " + str(player_num) +  " won Final Jeopardy " + str(win_prob) + "% " + "of the time with a wager of $" + str(wager_scores[i]))  """
