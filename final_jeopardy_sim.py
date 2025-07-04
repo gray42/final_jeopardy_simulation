@@ -18,7 +18,6 @@ random.seed(42)  # For reproducibility
 
 def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_sims=10000, iterations=20, ):
     num_of_players = len(starting_scores)
-     # Wager increments in dollars
 
     # starting wagers
     def get_starting_wagers(score, position, starting_scores):
@@ -147,8 +146,9 @@ def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment
     # get starting wager and then calculate nearby wagers
     current = starting_wagers[i]
     for x in [-2*increment, -increment, 0, increment, 2*increment]:
-       wager = max(0, min(player_score, current + x))
-       wagers.add(wager)
+       wager = current + x
+       if 0 <= wager <= player_score:
+        wagers.add(wager)
 
     # loop through opponents' scores and wagers to come up with strategic wagers
     for j, (score, wager) in enumerate(zip(all_scores, starting_wagers)):
@@ -176,13 +176,13 @@ def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment
             wagers.add(tie_wager)
     
     # add regular wagers in increments to list
-    regular_wagers = list(range(0, player_score + 1, increment))
-    wagers.update(regular_wagers)
     
-    return sorted(list(wagers))
+    wagers.update(range(0, player_score + 1, increment))
+    valid_wagers = sorted({int(w) for w in wagers if w >= 0 and w <= player_score})
+    
+    return valid_wagers
 
 # LOOK INTO VISUALS MORE 
-
 def plot_convergence(history, starting_scores):
     history = np.array(history)
     x = np.arange(history.shape[0])
@@ -260,7 +260,7 @@ if __name__ == "__main__":
     )
 
     # Display results
-    print("\n=== TEST CASE 3 RESULTS ===")
+    print("\n=== TEST CASE 3 - LOCK GAME RESULTS ===")
     df = pd.DataFrame({
         'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
         'Starting Score': [f'${score:,}' for score in starting_scores],
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     )
 
     # Display results
-    print("\n=== TEST CASE 4 RESULTS ===")
+    print("\n=== TEST CASE 4 - LOCK TIE GAME RESULTS ===")
     df = pd.DataFrame({
         'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
         'Starting Score': [f'${score:,}' for score in starting_scores],
@@ -308,7 +308,7 @@ if __name__ == "__main__":
     )
 
     # Display results
-    print("\n=== TEST CASE 5 - Two-Thirds Game & Three-Quarters Game ===")
+    print("\n===================== TEST CASE 5 - Two-Thirds Game & Three-Quarters Game =====================")
     df = pd.DataFrame({
         'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
         'Starting Score': [f'${score:,}' for score in starting_scores],
