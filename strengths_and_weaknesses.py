@@ -15,21 +15,21 @@ def read_prob(name):
         print("  ❗ Please enter a number between 0 and 1.")
 
 # Get strengths
-Player1 = read_prob("Player 1")
-Player2 = read_prob("Player 2")
-Player3 = read_prob("Player 3")
+PlayerA = read_prob("PlayerA")
+PlayerB = read_prob("PlayerB")
+PlayerC = read_prob("PlayerC")
 
 strengths = {
-    "Player1": Player1,
-    "Player2": Player2,
-    "Player3": Player3,
+    "PlayerA": PlayerA,
+    "PlayerB": PlayerB,
+    "PlayerC": PlayerC
 }
 
 # Category adjustments per player
 adjustments = {
-    "Player1": {"Fine Arts": +0.1, "Literature": -0.5},
-    "Player2": {"Science": +0.2,      "Religion":   -0.3},
-    "Player3": {"Mythology": +0.15,   "History":    -0.2}
+    "PlayerA": {"Fine Arts": +0.1, "Literature": -0.5},
+    "PlayerB": {"Science": +0.2,      "Religion":   -0.3},
+    "PlayerC": {"Mythology": +0.15,   "History":    -0.2}
 }
 
 def adjust_strength(player_name: str, category: str, base_strength: float) -> float:
