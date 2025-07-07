@@ -17,7 +17,7 @@ from strengths_and_weaknesses import get_probabilities
 
 random.seed(42)  # For reproducibility
 
-def finalJeopardySim(starting_scores, probabilities, wager_increments, num_of_sims=10000, iterations=20, ):
+def finalJeopardySim(starting_scores, probabilities, wager_increments=50, num_of_sims=10000, iterations=20, ):
     num_of_players = len(starting_scores)
 
     # starting wagers
@@ -156,7 +156,7 @@ def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment
 
     # get starting wager and then calculate nearby wagers
     current = starting_wagers[i]
-    for x in [-2*increment, -increment, 0, increment, 2*increment]:
+    for x in [-2*increment, -increment, -5, -1, 0, 1, 5, increment, 2*increment]:
        wager = current + x
        if 0 <= wager <= player_score:
         wagers.add(wager)
@@ -181,19 +181,39 @@ def get_strategic_wagers(player_score, all_scores, starting_wagers, i, increment
             wagers.add(target_to_beat_wrong)
             wagers.add(min(player_score, target_to_beat_wrong + increment))
         
-        # "Forrest Bounce" - wager to tie if both wrong
+        # wager to tie if both wrong
         tie_wager = player_score - score + wager
         if 0 <= tie_wager <= player_score:
             wagers.add(tie_wager)
-    
-    # add regular wagers in increments to list
+
+        # -- Lockout Wager (if you're in 1st and opponent is 2nd) --
+        sorted_scores = sorted(((s, idx) for idx, s in enumerate(all_scores)), reverse=True)
+        (first_score, first_idx), (second_score, second_idx), (third_score, third_idx) = sorted_scores
+
+        if i == first_idx and j == second_idx and player_score > 2 * score:
+            wagers.add(0)  # minimal wager to lock out 2nd
+
+        # -- Shore-the-second (hedging against 2nd's big miss) --
+        if i == first_idx and j == second_idx:
+            worst_2nd_score = score - wager
+            shore = player_score - worst_2nd_score
+            if 0 <= shore <= player_score:
+                wagers.add(int(shore))
+
+        # -- Stratified (3rd trying to beat 2nd if they miss) --
+        if i == third_idx and j == second_idx:
+            worst_2nd_score = score - wager
+            target = worst_2nd_score + 1
+            stratified = target - player_score
+            if 0 <= stratified <= player_score:
+                wagers.add(int(stratified))
     
     wagers.update(range(0, player_score + 1, increment))
     valid_wagers = sorted({int(w) for w in wagers if w >= 0 and w <= player_score})
     
     return valid_wagers
 
-# LOOK INTO VISUALS MORE 
+# 3 player line graph to plot wagers over iterations
 def plot_convergence(history, starting_scores):
     history = np.array(history)
     x = np.arange(history.shape[0])
@@ -202,55 +222,100 @@ def plot_convergence(history, starting_scores):
     for i in range(history.shape[1]):
         plt.plot(x, history[:, i], label=f"Player {i+1} (Start: ${starting_scores[i]})")
     plt.xlabel("Iteration")
-    plt.ylabel("Wager Amount")
+    plt.ylabel("Wager Amount ($)")
     plt.title("Convergence of Wagers Over Iterations")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
-def plot_heatmap(player_index, wager_range, win_probs):
+# tracks wagers for individual players
+def plot_heatmap(player_index, wager_range, win_probs, optimal_wager=None):
     plt.figure(figsize=(8, 5))
+    plt.plot(wager_range, win_probs, color='blue', lw=2, label='Win Probability')
     plt.scatter(wager_range, win_probs, c=win_probs, cmap='viridis', s=100, edgecolor='k')
+    if optimal_wager is not None:
+        idx = wager_range.index(optimal_wager)
+        plt.scatter([optimal_wager], [win_probs[idx]], color='red', s=200, marker='*', label='Optimal Wager')
+        plt.axvline(optimal_wager, color='red', linestyle='--', alpha=0.7)
+        plt.annotate(f'Optimal: ${optimal_wager}', xy=(optimal_wager, win_probs[idx]), 
+                     xytext=(optimal_wager, max(win_probs)*0.8),
+                     arrowprops=dict(facecolor='red', shrink=0.05), fontsize=12, color='red')
     plt.colorbar(label="Win Probability")
     plt.xlabel("Wager")
     plt.ylabel("Win Probability")
     plt.title(f"Player {player_index+1}: Win Probability vs Wager")
     plt.grid(True)
+    plt.legend()
     plt.show()
 
-def plot_final_win_probs(win_probs, wager):
-    plt.figure(figsize=(8, 5))
+# compares final results - wagers and win probabilites 
+def plot_final_win_probs(win_probs, wager, p_correct):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+        
+    # Win probabilities
     players = [f'Player {i+1}' for i in range(len(win_probs))]
-    plt.bar(players, win_probs, color='skyblue')
-    plt.ylim(0, 1)
-    plt.ylabel("Win Probability")
-    plt.title("Final Win Probabilities")
-    for i, prob in enumerate(win_probs):
-        plt.text(i, prob + 0.02, f"{prob:.2%}", ha='center')
-        plt.text(i, 0.01, f"Wager: ${wager[i]}", ha='center', fontsize=9, color='darkgreen')
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    bars1 = ax1.bar(players, win_probs, color='skyblue', alpha=0.7)
+    ax1.set_ylim(0, 1)
+    ax1.set_ylabel("Win Probability")
+    ax1.set_title("Final Win Probabilities")
+    ax1.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    # Add value labels on bars
+    for i, (bar, prob, wager) in enumerate(zip(bars1, win_probs, optimal_wagers)):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
+                f'{prob:.1%}', ha='center', va='bottom', fontweight='bold')
+        ax1.text(bar.get_x() + bar.get_width()/2, 0.02, 
+                f'Wager: ${wager:,}\nP(Correct): {p_correct[i]:.1%}%', ha='center', va='bottom', 
+                fontsize=9, color='darkgreen')
+    
+    # Starting positions comparison
+    x_pos = np.arange(len(players))
+    width = 0.35
+    
+    bars2 = ax2.bar(x_pos - width/2, starting_scores, width, 
+                    label='Starting Score', color='lightcoral', alpha=0.7)
+    bars3 = ax2.bar(x_pos + width/2, optimal_wagers, width, 
+                    label='Optimal Wager', color='lightgreen', alpha=0.7)
+    
+    ax2.set_xlabel('Players')
+    ax2.set_ylabel('Amount ($)')
+    ax2.set_title('Starting Scores vs Optimal Wagers')
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(players)
+    ax2.legend()
+    ax2.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    # Add value labels
+    for bars in [bars2, bars3]:
+        for bar in bars:
+            height = bar.get_height()
+            ax2.text(bar.get_x() + bar.get_width()/2, height + 50,
+                    f'${int(height):,}', ha='center', va='bottom', fontsize=9)
+            
+    plt.tight_layout()
     plt.show()
-
 
 
 if __name__ == "__main__":
     # TEST CASE 1
-    print("\n===================== TEST CASE 1 =====================")
-    starting_scores = [1000, 800, 700]
+    print("\n===================== TEST CASE 1 =====================\n")
+    starting_scores = [1300, 800, 700]
     #probabilities = [0.65, 0.70, 0.60] 
     probabilities = get_probabilities()  
-    print(f"Probabilities: {probabilities}")
+
+    print(f"Starting Scores: {starting_scores}\n")
+    print(f"Probabilities: {probabilities}\n")
 
     optimal_wagers, win_probs, history, wager_range, heatmap = finalJeopardySim(
         starting_scores, probabilities, 
         num_of_sims=20000,  
-        iterations=15,
-        wager_increments=100
+        iterations=20,
+        wager_increments=50    
     )
 
     # Display results
-    print("\n=== TEST CASE 1 RESULTS ===")
+    print("\n===================== TEST CASE 1 RESULTS =====================\n")
     df = pd.DataFrame({
         'Player': [f'Player {i + 1}' for i in range(len(optimal_wagers))],
         'Starting Score': [f'${score:,}' for score in starting_scores],
@@ -261,12 +326,12 @@ if __name__ == "__main__":
     print(df.to_string(index=False))
 
     # call visuals
-    plot_final_win_probs(win_probs, optimal_wagers)
+    plot_final_win_probs(win_probs, optimal_wagers, probabilities)
     for i in range(len(starting_scores)):
         plot_heatmap(i, wager_range[i], heatmap[i])
     plot_convergence(history, starting_scores)
 
-    # TEST CASE 2
+    """ # TEST CASE 2
     print("\n===================== TEST CASE 2 =====================")
     starting_scores = [1200, 1300, 650]
     probabilities = [0.75, 0.50, 0.90] 
@@ -275,7 +340,7 @@ if __name__ == "__main__":
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
-        wager_increments=100
+        wager_increments=25
     )
 
     # Display results
@@ -299,7 +364,7 @@ if __name__ == "__main__":
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
-        wager_increments=100
+        wager_increments=25
     )
 
     # Display results
@@ -323,7 +388,7 @@ if __name__ == "__main__":
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
-        wager_increments=100
+        wager_increments=25
     )
 
     # Display results
@@ -347,7 +412,7 @@ if __name__ == "__main__":
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=15,
-        wager_increments=100
+        wager_increments=25
     )
 
     # Display results
@@ -360,6 +425,6 @@ if __name__ == "__main__":
         'Win Probability': [f'{p:.1%}' for p in win_probs]
     })
     print(df.to_string(index=False))
-    plot_convergence(history, starting_scores)
+    plot_convergence(history, starting_scores) """
 
 

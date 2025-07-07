@@ -14,6 +14,18 @@ def read_prob(name):
             pass
         print("  ❗ Please enter a number between 0 and 1.")
 
+# — Use the identifier module to pick a random clue & category —
+# (identifier.py must expose: load_keywords, load_bank, pick_random, classify)
+KEYWORDS = identifier.load_keywords("keywords.json")
+bank     = identifier.load_bank("final_jeopardy_all.json")
+
+rec = identifier.pick_random(bank)
+q   = rec.get("question", "")
+a   = rec.get("answer", "")
+orig= rec.get("category", "")
+
+print(f"\nJeopardy! Category: {orig}\n")
+
 # Get strengths
 PlayerA = read_prob("PlayerA")
 PlayerB = read_prob("PlayerB")
@@ -27,9 +39,9 @@ strengths = {
 
 # Category adjustments per player
 adjustments = {
-    "PlayerA": {"Fine Arts": +0.1, "Literature": -0.5},
+    "PlayerA": {"Fine Arts": +0.1, "Literature": -0.1},
     "PlayerB": {"Science": +0.2,      "Religion":   -0.3},
-    "PlayerC": {"Mythology": +0.15,   "History":    -0.2}
+    "PlayerC": {"Mythology": +0.1,   "History":    -0.2}
 }
 
 def adjust_strength(player_name: str, category: str, base_strength: float) -> float:
@@ -37,24 +49,16 @@ def adjust_strength(player_name: str, category: str, base_strength: float) -> fl
     adj = adjustments.get(player_name, {}).get(category, 0.0)
     return base_strength + adj
 
-# — Use the identifier module to pick a random clue & category —
-# (identifier.py must expose: load_keywords, load_bank, pick_random, classify)
-KEYWORDS = identifier.load_keywords("keywords.json")
-bank     = identifier.load_bank("final_jeopardy_all.json")
-
-rec = identifier.pick_random(bank)
-q   = rec.get("question", "")
-a   = rec.get("answer", "")
-orig= rec.get("category", "")
-
 choice = identifier.classify(orig, q, a, KEYWORDS)
 
 def get_probabilities():
     adjusted = []
     for player, base in strengths.items():
         new_str = adjust_strength(player, choice, base)
+        # minimum set to 0.1
         if new_str == 0.0:
             new_str += 0.1
+        # maximum set to 0.99
         elif new_str > 1.0:
             new_str = 0.99
         adjusted.append(round(max(0.0, min(1.0, new_str)), 2))
@@ -64,7 +68,7 @@ def get_probabilities():
 print("\n=== SELECTED FINAL JEOPARDY! CLUE ===")
 print(f"Clue:   {q}")
 print(f"Answer: {a}")
-print(f"Jeopardy! Category: {orig}")
+
 print(f"\n→ FINAL CATEGORY (for strengths): {choice}\n")
 
 # — Compute & print each player’s adjusted strength —
