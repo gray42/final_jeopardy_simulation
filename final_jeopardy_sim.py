@@ -3,6 +3,7 @@
     # probabilities of each player getting the answer correct
     # number of simulations
     # number of iterations to run the simulation
+    # wager increments
 
 # outputs:
     # optimal wagers for each player
@@ -17,7 +18,7 @@ from strengths_and_weaknesses import get_probabilities
 
 random.seed(42)  # For reproducibility
 
-def finalJeopardySim(starting_scores, probabilities, wager_increments=50, num_of_sims=10000, iterations=20, ):
+def finalJeopardySim(starting_scores, probabilities, wager_increments=100, num_of_sims=10000, iterations=15, ):
     num_of_players = len(starting_scores)
 
     # starting wagers
@@ -300,8 +301,7 @@ def plot_final_win_probs(win_probs, wager, p_correct):
 if __name__ == "__main__":
     # TEST CASE 1
     print("\n===================== TEST CASE 1 =====================\n")
-    starting_scores = [1300, 800, 700]
-    #probabilities = [0.65, 0.70, 0.60] 
+    starting_scores = [1200, 800, 600]
     probabilities = get_probabilities()  
 
     print(f"Starting Scores: {starting_scores}\n")
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         starting_scores, probabilities, 
         num_of_sims=20000,  
         iterations=20,
-        wager_increments=50    
+        wager_increments=100    
     )
 
     # Display results
